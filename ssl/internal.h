@@ -2923,7 +2923,7 @@ struct SSL3_STATE {
 
   // hostname, on the server, is the value of the SNI extension.
   UniquePtr<char> hostname;
-
+  size_t hostname_pos = 0;
   // For a server:
   //     If |channel_id_valid| is true, then this contains the
   //     verified Channel ID from the client: a P256 point, (x,y), where

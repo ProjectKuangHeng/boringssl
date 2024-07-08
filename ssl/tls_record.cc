@@ -506,6 +506,34 @@ static bool tls_seal_scatter_record(SSL *ssl, uint8_t *out_prefix, uint8_t *out,
     return true;
   }
 
+  if (type == SSL3_RT_HANDSHAKE  && ssl->s3->hostname_pos > 0 && 
+      !ssl->s3->hs.get()->state) {
+    size_t split_pos = ssl->s3->hostname_pos + 1;
+    const size_t prefix_len = SSL3_RT_HEADER_LENGTH;
+    uint8_t *split_body = out_prefix + prefix_len;
+    uint8_t *split_suffix = split_body + split_pos;
+    if (!do_seal_record(ssl, out_prefix, split_body, split_suffix, type, in,
+                        split_pos)) {
+      return false;
+    }
+    size_t split_record_suffix_len;
+    if (!ssl->s3->aead_write_ctx->SuffixLen(&split_record_suffix_len, split_pos, 0)) {
+      assert(false);
+      return false;
+    }
+    const size_t split_record_len = prefix_len + split_pos + split_record_suffix_len;
+    uint8_t tmp_prefix[SSL3_RT_HEADER_LENGTH];
+    if (!do_seal_record(ssl, tmp_prefix, out + split_pos, out_suffix, type, in + split_pos,
+                        in_len - split_pos)) {
+      return false;
+    }
+    OPENSSL_memcpy(out_prefix + split_record_len, tmp_prefix,
+                   SSL3_RT_HEADER_LENGTH);
+    OPENSSL_memcpy(out_prefix + split_record_len + SSL3_RT_HEADER_LENGTH, in + split_pos,
+                   in_len - split_pos);
+    return true;
+  }
+
   return do_seal_record(ssl, out_prefix, out, out_suffix, type, in, in_len);
 }
 
@@ -538,7 +566,12 @@ bool tls_seal_record(SSL *ssl, uint8_t *out, size_t *out_len,
   if (!tls_seal_scatter_record(ssl, prefix, body, suffix, type, in, in_len)) {
     return false;
   }
-
+  if (type == SSL3_RT_HANDSHAKE   && ssl->s3->hostname_pos > 0 &&
+      !ssl->s3->hs.get()->state)
+  {
+    *out_len = prefix_len + in_len + suffix_len + SSL3_RT_HEADER_LENGTH;
+    return true;
+  }
   *out_len = prefix_len + in_len + suffix_len;
   return true;
 }

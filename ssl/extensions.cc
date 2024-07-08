@@ -547,7 +547,10 @@ static bool ext_sni_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
       !CBB_flush(out)) {
     return false;
   }
-
+  if (out->is_child)
+  {
+    hs->ssl->s3->hostname_pos = out->u.child.base->len - hostname.size();
+  }
   return true;
 }
 
